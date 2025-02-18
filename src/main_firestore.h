@@ -1,4 +1,3 @@
-
 /**
  * ABOUT:
  *
@@ -35,6 +34,7 @@
 #include <LittleFS.h>
 #include <FirebaseClient.h>
 #include <WiFiClientSecure.h>
+#include <sys/time.h>
 
 #include <Benchmark.h>
 #include <SimpleTimer.h>
@@ -193,13 +193,13 @@ void printResult(AsyncResult &aResult)
 
 String getTimestampString()
 {
-    time_t now;
-    struct tm ts;
-    char buf[80];
-    now = time(nullptr);
-    ts = *localtime(&now);
-
-    String format = "%Y-%m-%dT%H:%M:%SZ";
-    strftime(buf, sizeof(buf), format.c_str(), &ts);
-    return buf;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    time_t now = tv.tv_sec;
+    struct tm ts = *localtime(&now);
+    char buf[100];
+    sprintf(buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06ldZ",
+            ts.tm_year + 1900, ts.tm_mon + 1, ts.tm_mday,
+            ts.tm_hour, ts.tm_min, ts.tm_sec, tv.tv_usec);
+    return String(buf);
 }

@@ -32,7 +32,8 @@
 
 #include <Benchmark.h>
 #include <SimpleTimer.h>
-#include <CredentialsManager.h>
+
+#include <CredentialsManager/CredentialsManager.h>
 
 static const char *WIFI_SSID;
 static const char *WIFI_PASSWORD;

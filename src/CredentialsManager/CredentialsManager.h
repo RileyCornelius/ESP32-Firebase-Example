@@ -26,7 +26,7 @@ public:
             Serial.println("Failed to open wifi_config.json file");
             return WifiCredential();
         }
-        DynamicJsonDocument doc(1024);
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, wifiConfigFile);
         if (error)
         {
@@ -50,7 +50,7 @@ public:
             Serial.println("Failed to open firebase_config.json file");
             return FirebaseCredential();
         }
-        DynamicJsonDocument doc(1024);
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, firebaseConfigFile);
         if (error)
         {

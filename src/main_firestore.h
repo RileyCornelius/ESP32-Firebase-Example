@@ -46,18 +46,15 @@ static const char *WIFI_PASSWORD;
 static const char *API_KEY;
 static const char *USER_EMAIL;
 static const char *USER_PASSWORD;
-static const char *DATABASE_URL;
 static const char *FIREBASE_PROJECT_ID;
 
-DefaultNetwork network; // initilize with boolean parameter to enable/disable network reconnection
+DefaultNetwork network; // initialize with boolean parameter to enable/disable network reconnection
 
-// UserAuth user_auth(API_KEY, USER_EMAIL, USER_PASSWORD);
-NoAuth user_auth;
 FirebaseApp app;
-WiFiClientSecure ssl_client;
+WiFiClientSecure sslClient;
 
 using AsyncClient = AsyncClientClass;
-AsyncClient aClient(ssl_client, getNetwork(network));
+AsyncClient aClient(sslClient, getNetwork(network));
 Firestore::Documents Docs;
 
 FirebaseCredential firebaseCredential;
@@ -65,7 +62,7 @@ WifiCredential wifiCredential;
 
 void asyncCB(AsyncResult &aResult);
 void printResult(AsyncResult &aResult);
-String getTimestampString(uint64_t sec, uint32_t nano);
+String getTimestampString();
 
 void setup()
 {
@@ -74,7 +71,6 @@ void setup()
     Serial.println("Starting...");
 
     // Read configuration files
-
     if (!LittleFS.begin())
     {
         Serial.println("An Error has occurred while mounting LittleFS");
@@ -99,14 +95,13 @@ void setup()
         return;
     }
 
-    API_KEY = firebaseCredential.apiKey.c_str();
-    USER_EMAIL = firebaseCredential.userEmail.c_str();
-    USER_PASSWORD = firebaseCredential.userPassword.c_str();
-    DATABASE_URL = firebaseCredential.realtimeDbUrl.c_str();
+    // API_KEY = firebaseCredential.apiKey.c_str();
+    // USER_EMAIL = firebaseCredential.userEmail.c_str();
+    // USER_PASSWORD = firebaseCredential.userPassword.c_str();
     FIREBASE_PROJECT_ID = firebaseCredential.projectId.c_str();
 
     // Connect to Wi-Fi
-
+    WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("Connecting to Wi-Fi");
     while (WiFi.status() != WL_CONNECTED)
@@ -117,62 +112,56 @@ void setup()
     Serial.println();
     Serial.print("Connected with IP: ");
     Serial.println(WiFi.localIP());
-    Serial.println();
 
     // Setup Firebase
-
     Firebase.printf("Firebase Client v%s\n", FIREBASE_CLIENT_VERSION);
-    ssl_client.setInsecure();
+    sslClient.setInsecure();
 
     Serial.println("Initializing the app...");
-    initializeApp(aClient, app, getAuth(user_auth), asyncCB, "authTask");
-
-    // Binding the FirebaseApp for authentication handler.
-    // To unbind, use Docs.resetApp();
+    // UserAuth userAuth(API_KEY, USER_EMAIL, USER_PASSWORD);
+    NoAuth userAuth;
+    initializeApp(aClient, app, getAuth(userAuth), asyncCB, "authTask");
     app.getApp<Firestore::Documents>(Docs);
+    Serial.println("Initialized the app");
+
+    // Set time using NTP server
+    tm timeinfo;
+    configTzTime("UTC0", "0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org");
+    getLocalTime(&timeinfo);
+    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void loop()
 {
     // The async task handler should run inside the main loop
     // without blocking delay or bypassing with millis code blocks.
-
     app.loop();
     Docs.loop();
 
-    static int data_count = 0;
     static unsigned long dataMillis = 0;
-    if (app.ready() && (millis() - dataMillis > 20000 || dataMillis == 0))
+    if (app.ready() && (millis() - dataMillis > 10000 || dataMillis == 0))
     {
         dataMillis = millis();
-
-        // We will create the documents in this parent path "test_doc_creation/doc_1/col_1/data_?"
-        // (collection > document > collection > documents that contains fields).
-
-        // Note: If new document created under non-existent ancestor documents as in this example
-        // which the document "test_doc_creation/doc_1" does not exist, that document (doc_1) will not appear in queries and snapshot
-        // https://cloud.google.com/firestore/docs/using-console#non-existent_ancestor_documents.
-
-        // In the console, you can create the ancestor document "test_doc_creation/doc_1" before running this example
+        // In the console, you can create the ancestor document "example_collection/doc_1" before running this example
         // to avoid non-existent ancestor documents case.
+        String documentPath = "example_collection/doc_1/data_1";
 
-        String documentPath = "example_collection/doc_1/data_";
-        documentPath += data_count;
-        // data_count++;
+        Values::TimestampValue timestamp(getTimestampString());
+        Values::StringValue deviceId(WiFi.macAddress());
+        Values::IntegerValue temperature(random(100));
+        Values::IntegerValue humidity(random(100));
 
-        Values::TimestampValue timestamp(getTimestampString(dataMillis, 0));
-        Values::DoubleValue temperature(number_t(random(100), 6));
-        Values::DoubleValue humidity(number_t(random(100), 6));
-
-        Document<Values::Value> doc("temperature", Values::Value(temperature));
-        doc.add("humidity", Values::Value(humidity));
+        Document doc;
         doc.add("timestamp", Values::Value(timestamp));
+        doc.add("deviceId", Values::Value(deviceId));
+        doc.add("temperature", Values::Value(temperature));
+        doc.add("humidity", Values::Value(humidity));
 
         // The value of Values::xxxValue, Values::Value and Document can be printed on Serial.
         Serial.println("Creating a document... ");
-        BENCHMARK_MICROS_BEGIN(Create);
+        BENCHMARK_MICROS_BEGIN(Created);
         Docs.createDocument(aClient, Firestore::Parent(FIREBASE_PROJECT_ID), documentPath, DocumentMask(), doc, asyncCB, "createDocumentTask");
-        BENCHMARK_MICROS_END(Create);
+        BENCHMARK_MICROS_END(Created);
     }
 }
 
@@ -201,30 +190,15 @@ void printResult(AsyncResult &aResult)
     }
 }
 
-String getTimestampString(uint64_t sec, uint32_t nano)
+String getTimestampString()
 {
-    if (sec > 0x3afff4417f)
-        sec = 0x3afff4417f;
-
-    if (nano > 0x3b9ac9ff)
-        nano = 0x3b9ac9ff;
-
     time_t now;
     struct tm ts;
     char buf[80];
-    now = sec;
+    now = time(nullptr);
     ts = *localtime(&now);
 
-    String format = "%Y-%m-%dT%H:%M:%S";
-
-    if (nano > 0)
-    {
-        String fraction = String(double(nano) / 1000000000.0f, 9);
-        fraction.remove(0, 1);
-        format += fraction;
-    }
-    format += "Z";
-
+    String format = "%Y-%m-%dT%H:%M:%SZ";
     strftime(buf, sizeof(buf), format.c_str(), &ts);
     return buf;
 }

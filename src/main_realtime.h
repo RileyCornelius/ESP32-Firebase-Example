@@ -37,19 +37,17 @@
 static const char *WIFI_SSID;
 static const char *WIFI_PASSWORD;
 
-static const char *API_KEY;
-static const char *USER_EMAIL;
-static const char *USER_PASSWORD;
+// static const char *API_KEY;
+// static const char *USER_EMAIL;
+// static const char *USER_PASSWORD;
 static const char *DATABASE_URL;
 
-DefaultNetwork network;
-// UserAuth user_auth(API_KEY, USER_EMAIL, USER_PASSWORD);
-NoAuth user_auth;
+DefaultNetwork network; // initialize with boolean parameter to enable/disable network reconnection
 FirebaseApp app;
-WiFiClientSecure ssl_client;
+WiFiClientSecure sslClient;
 using AsyncClient = AsyncClientClass;
 
-AsyncClient aClient(ssl_client, getNetwork(network));
+AsyncClient aClient(sslClient, getNetwork(network));
 RealtimeDatabase Database;
 
 FirebaseCredential firebaseCredential;
@@ -68,7 +66,6 @@ void setup()
     delay(3000); // wait for the serial monitor to connect
 
     // Read configuration files
-
     if (!LittleFS.begin())
     {
         Serial.println("An Error has occurred while mounting LittleFS");
@@ -92,13 +89,13 @@ void setup()
         Serial.println("Firebase configuration is empty");
         return;
     }
-    API_KEY = firebaseCredential.apiKey.c_str();
-    USER_EMAIL = firebaseCredential.userEmail.c_str();
-    USER_PASSWORD = firebaseCredential.userPassword.c_str();
+    // API_KEY = firebaseCredential.apiKey.c_str();
+    // USER_EMAIL = firebaseCredential.userEmail.c_str();
+    // USER_PASSWORD = firebaseCredential.userPassword.c_str();
     DATABASE_URL = firebaseCredential.realtimeDbUrl.c_str();
 
     // Connect to Wi-Fi
-
+    WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     Serial.print("Connecting to Wi-Fi");
@@ -110,22 +107,24 @@ void setup()
     Serial.println();
     Serial.print("Connected with IP: ");
     Serial.println(WiFi.localIP());
-    Serial.println();
 
     // Setup Firebase
-
     Firebase.printf("Firebase Client v%s\n", FIREBASE_CLIENT_VERSION);
-    ssl_client.setInsecure();
+    sslClient.setInsecure();
 
     Serial.println("Initializing the app...");
-    initializeApp(aClient, app, getAuth(user_auth), asyncCB, "authTask");
-
-    // Binding the FirebaseApp for authentication handler.
-    // To unbind, use Database.resetApp();
+    // UserAuth userAuth(API_KEY, USER_EMAIL, USER_PASSWORD);
+    NoAuth userAuth;
+    initializeApp(aClient, app, getAuth(userAuth), asyncCB, "authTask");
     app.getApp<RealtimeDatabase>(Database);
-
-    // Set your database URL (requires only for Realtime Database)
     Database.url(DATABASE_URL);
+    Serial.println("Initialized the app");
+
+    // Set time using NTP server
+    tm timeinfo;
+    configTzTime("UTC0", "0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org");
+    getLocalTime(&timeinfo);
+    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void loop()
@@ -157,7 +156,7 @@ void loop()
         // Database.push<object_t>(aClient, "/test/json", json, asyncCB, "pushJsonTask2");
     }
 
-    EVERY_N_MILLIS(60000)
+    EVERY_N_MILLIS(10000)
     {
         taskCompleted = false;
     }

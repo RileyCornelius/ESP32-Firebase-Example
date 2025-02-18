@@ -4,4 +4,5 @@
 .vscode/launch.json
 .vscode/ipch
 
-/data/*
+/data/firebase_config.json
+/data/wifi_config.json
